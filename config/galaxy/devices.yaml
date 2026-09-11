@@ -4,7 +4,7 @@
 
 devices:
   - device_id: "windows_device_2"
-    server_url: "wss://effect-dividend-classics-automated.trycloudflare.com/ws?token=YlcfSLvZQO4qZvJ5FT93AkwV5tQY1icJ2dicLD9CSCk"
+    server_url: "wss://girls-cream-praise-additions.trycloudflare.com/ws?token=lRQkRwwo9iku3fSvcHaEmr8we_5cSm130ZV0reO8aO8"
     os: "windows"
     capabilities:
       - "web_browsing"
@@ -24,27 +24,27 @@ devices:
       operation_engineer_name: "Hidan Zhang"
       tips: "For Windows Settings pages, call run_shell directly with 'start ms-settings:<page>'; do not launch PowerShell or another nested shell first."
     max_retries: 5
-  - device_id: "windows_device_1"
-    server_url: "wss://effect-dividend-classics-automated.trycloudflare.com/ws?token=YlcfSLvZQO4qZvJ5FT93AkwV5tQY1icJ2dicLD9CSCk"
-    os: "windows"
-    capabilities:
-      - "web_browsing"
-      - "office_applications"
-      - "file_management"
-      - "send emails"
-      - "any windows tasks"
-    metadata:
-      location: "home_office"
-      os: "windows"
-      performance: "medium"
-      description: "Primary development laptop"
-      operation_engineer_email: "hidan.zhang@gmail.com"
-      app_log_file: "log_detailed.xlsx"
-      sheet_name_for_writing_log_in_excel: "report"
-      sender_name: "Zac"
-      operation_engineer_name: "Hidan Zhang"
-      tips: "For Windows Settings pages, call run_shell directly with 'start ms-settings:<page>'; do not launch PowerShell or another nested shell first."
-    max_retries: 5
+  # - device_id: "windows_device_1"
+  #   server_url: "wss://effect-dividend-classics-automated.trycloudflare.com/ws?token=YlcfSLvZQO4qZvJ5FT93AkwV5tQY1icJ2dicLD9CSCk"
+  #   os: "windows"
+  #   capabilities:
+  #     - "web_browsing"
+  #     - "office_applications"
+  #     - "file_management"
+  #     - "send emails"
+  #     - "any windows tasks"
+  #   metadata:
+  #     location: "home_office"
+  #     os: "windows"
+  #     performance: "medium"
+  #     description: "Primary development laptop"
+  #     operation_engineer_email: "hidan.zhang@gmail.com"
+  #     app_log_file: "log_detailed.xlsx"
+  #     sheet_name_for_writing_log_in_excel: "report"
+  #     sender_name: "Zac"
+  #     operation_engineer_name: "Hidan Zhang"
+  #     tips: "For Windows Settings pages, call run_shell directly with 'start ms-settings:<page>'; do not launch PowerShell or another nested shell first."
+  #   max_retries: 5
 
 
 

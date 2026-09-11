@@ -9,10 +9,13 @@ Provides MCP server for command line operations:
 """
 
 import logging
+import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
+from pathlib import Path
 from typing import FrozenSet, List
 
 from fastmcp import FastMCP
@@ -66,6 +69,14 @@ ALLOWED_CLI_COMMANDS: FrozenSet[str] = frozenset(
         # Common utilities
         "code",
         "code.exe",
+        "XboxGameBar",
+        "XboxGameBar.exe",
+        "snippingtool",
+        "snippingtool.exe",
+        "obs64.exe",
+        "obs64",
+        "ffmpeg",
+        "ffmpeg.exe",
     }
 )
 
@@ -123,6 +134,17 @@ def _parse_allowed_command(command_str: str) -> List[str] | None:
         return None
 
     base = tokens[0].strip().lower()
+    if base == "start":
+        if len(tokens) == 2 and tokens[1].lower() in {
+            "snippingtool",
+            "snippingtool.exe",
+        }:
+            tokens = ["SnippingTool.exe"]
+            base = "snippingtool.exe"
+        else:
+            logger.warning("Blocked unsupported start command: %s", command_str[:200])
+            return None
+
     if not any(base == allowed.lower() for allowed in ALLOWED_CLI_COMMANDS):
         logger.warning("Blocked CLI command not in allow-list: %s", base)
         return None
@@ -149,6 +171,60 @@ def _is_cli_command_allowed(command_str: str) -> bool:
         return False
 
     return _parse_allowed_command(command_str) is not None
+
+
+def _resolve_cli_executable(args: List[str]) -> List[str]:
+    """Resolve allow-listed executables that may be installed outside PATH."""
+    if args[0].lower() not in {"ffmpeg", "ffmpeg.exe"}:
+        return args
+
+    configured_path = os.environ.get("FFMPEG_PATH")
+    candidates = [configured_path, shutil.which(args[0])]
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(
+            str(
+                Path(local_app_data)
+                / "Microsoft"
+                / "WinGet"
+                / "Links"
+                / "ffmpeg.exe"
+            )
+        )
+
+    executable = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            resolved_candidate = Path(candidate).resolve(strict=True)
+        except OSError:
+            continue
+        if resolved_candidate.is_file():
+            executable = str(resolved_candidate)
+            break
+
+    if not executable:
+        raise FileNotFoundError(
+            "FFmpeg was not found. Install it with `winget install Gyan.FFmpeg`, "
+            "restart UFO, or set FFMPEG_PATH to ffmpeg.exe."
+        )
+
+    return [executable, *args[1:]]
+
+
+def _get_ffmpeg_recording_timeout(args: List[str]) -> float | None:
+    """Return a bounded wait time for an FFmpeg command with a set duration."""
+    if args[0].lower() not in {"ffmpeg", "ffmpeg.exe"}:
+        return None
+
+    try:
+        duration_index = args.index("-t") + 1
+        duration = float(args[duration_index])
+    except (ValueError, IndexError):
+        return None
+
+    return duration + 30
 
 
 @MCPRegistry.register_factory_decorator("CommandLineExecutor")
@@ -186,9 +262,32 @@ def create_cli_mcp_server(*args, **kwargs) -> FastMCP:
         try:
             # Parse into argument list and launch without shell=True
             # to prevent shell injection.
-            subprocess.Popen(args, shell=False)
-            time.sleep(5)  # Wait for the application to launch
+            resolved_args = _resolve_cli_executable(args)
+            process = subprocess.Popen(resolved_args, shell=False)
+            recording_timeout = _get_ffmpeg_recording_timeout(args)
+            if recording_timeout is not None:
+                try:
+                    process.wait(timeout=recording_timeout)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    process.wait(timeout=5)
+                    raise ToolError(
+                        "FFmpeg recording did not stop after its configured duration."
+                    )
+                if process.returncode != 0:
+                    raise ToolError(
+                        f"FFmpeg recording failed with exit code {process.returncode}."
+                    )
+            else:
+                time.sleep(5)  # Wait for the application to launch
+        except FileNotFoundError as e:
+            attempted_executable = resolved_args[0] if "resolved_args" in locals() else args[0]
+            raise ToolError(
+                f"Failed to launch executable '{attempted_executable}': {str(e)}"
+            )
         except Exception as e:
+            if isinstance(e, ToolError):
+                raise
             raise ToolError(f"Failed to launch application: {str(e)}")
 
     return cli_mcp

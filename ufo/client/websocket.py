@@ -1,6 +1,8 @@
 import asyncio
 import datetime
 import logging
+from pathlib import Path
+import sys
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
@@ -57,6 +59,8 @@ class UFOWebSocketClient:
         self.current_task: Optional[asyncio.Task] = None
         self.session_id: Optional[str] = None
         self._ws: Optional[WebSocketClientProtocol] = None
+        self._recording_process: Optional[asyncio.subprocess.Process] = None
+        self._recording_sessions: set[str] = set()
 
         self.connected_event = asyncio.Event()
 
@@ -383,6 +387,9 @@ class UFOWebSocketClient:
         task_status = server_response.status
         self.session_id = server_response.session_id
 
+        if self.session_id:
+            self._recording_sessions.add(self.session_id)
+        await self._trigger_record_automation()
         action_results = await self.ufo_client.execute_step(server_response)
 
         # Use AIP TaskExecutionProtocol to send results
@@ -400,6 +407,55 @@ class UFOWebSocketClient:
 
         if task_status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
             await self.handle_task_end(server_response)
+
+    async def _trigger_record_automation(self) -> None:
+        if (
+            self._recording_process is not None
+            and self._recording_process.returncode is None
+        ):
+            self.logger.info("[WS] Automation recording is already running")
+            return
+
+        script_path = Path(__file__).resolve().parents[2] / "record_automation.py"
+        if not script_path.is_file():
+            self.logger.warning(
+                "[WS] Cannot start automation recording: %s does not exist",
+                script_path,
+            )
+            return
+
+        try:
+            self._recording_process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                str(script_path),
+                cwd=str(script_path.parent),
+                stdin=asyncio.subprocess.PIPE,
+            )
+            self.logger.info("[WS] Started automation recording: %s", script_path)
+        except OSError as error:
+            self.logger.error(
+                "[WS] Failed to start automation recording: %s", error
+            )
+
+    async def _stop_record_automation(self) -> None:
+        process = self._recording_process
+        if process is None:
+            return
+
+        if process.returncode is None:
+            try:
+                if process.stdin:
+                    process.stdin.write(b"\n")
+                    await process.stdin.drain()
+                await asyncio.wait_for(process.wait(), timeout=15)
+            except (BrokenPipeError, ConnectionResetError):
+                await process.wait()
+            except asyncio.TimeoutError:
+                process.terminate()
+                await process.wait()
+
+        self._recording_process = None
+        self.logger.info("[WS] Automation recording stopped")
 
     async def handle_task_end(self, server_response: ServerMessage):
         """
@@ -419,6 +475,12 @@ class UFOWebSocketClient:
             self.logger.warning(
                 f"[WS] Unknown task status for {self.session_id}: {server_response.status}"
             )
+
+        session_id = server_response.session_id
+        if session_id:
+            self._recording_sessions.discard(session_id)
+        if not self._recording_sessions:
+            await self._stop_record_automation()
 
     async def _maybe_retry(self):
         """
