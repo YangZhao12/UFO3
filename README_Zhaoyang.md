@@ -114,13 +114,48 @@ Before launching Galaxy WebUI, configure the device information in:
 config/galaxy/devices.yaml
 ```
 
-Add the registered Proxy devices to this file according to the UFO³ documentation.
+## Example Configuration
 
-For details, refer to:
+> Note:
+>
+> - `server_url` must point to the public WebSocket endpoint exposed by the Host.
+> - The `token` value in the URL should be the same API Key used in **Step 2**.
+> - This format is required because the source code has been customized to authenticate through the token embedded in `server_url`.
 
-```text
-Devices - UFO³ Documentation
+```yaml
+devices:
+  - device_name: windows_device_1
+    platform: windows
+    server_url: "wss://girls-cream-praise-additions.trycloudflare.com/ws?token=lRQkRwwo9iku3fSvcHaEmr8we_5cSm130ZV0reO8aO8"
 ```
+
+### Parameters
+
+| Parameter | Description |
+|------------|-------------|
+| `device_name` | Name of the registered proxy device |
+| `platform` | Device operating system |
+| `server_url` | Public WebSocket endpoint exposed by the Host |
+| `token` | API Key used in Step 2 |
+
+### Relationship with Step 2
+
+The following values must match:
+
+```bash
+python -m ufo.client.client \
+  --ws \
+  --ws-server wss://girls-cream-praise-additions.trycloudflare.com/ws \
+  --api-key "lRQkRwwo9iku3fSvcHaEmr8we_5cSm130ZV0reO8aO8" \
+  --client-id windows_device_1 \
+  --platform windows
+```
+
+```yaml
+server_url: "wss://girls-cream-praise-additions.trycloudflare.com/ws?token=lRQkRwwo9iku3fSvcHaEmr8we_5cSm130ZV0reO8aO8"
+```
+
+The token embedded in `server_url` should be identical to the `--api-key` value provided when starting the Proxy client.
 
 ---
 
