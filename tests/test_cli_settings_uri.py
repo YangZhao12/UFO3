@@ -214,9 +214,38 @@ async def test_system_settings_page_verification_requires_visible_heading():
 
 
 @pytest.mark.asyncio
-async def test_settings_page_verification_rejects_wrong_heading():
+async def test_settings_page_verification_waits_for_localized_hierarchical_heading():
     dispatcher = AsyncMock()
     dispatcher.execute_commands.side_effect = [
+        [Result(status=ResultStatus.SUCCESS, result=[])],
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"id": "7", "name": "设置"}],
+            )
+        ],
+        [Result(status=ResultStatus.SUCCESS, result={"root_name": "设置"})],
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"control_name": "系统\u200b > 屏幕", "control_type": "Text"}],
+            )
+        ],
+    ]
+
+    with patch(
+        "ufo.agents.processors.strategies.host_agent_processing_strategy.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
+        assert await _verify_settings_page(
+            dispatcher, "start ms-settings:system"
+        )
+
+
+@pytest.mark.asyncio
+async def test_settings_page_verification_rejects_wrong_heading():
+    dispatcher = AsyncMock()
+    setup_results = [
         [
             Result(
                 status=ResultStatus.SUCCESS,
@@ -224,15 +253,28 @@ async def test_settings_page_verification_rejects_wrong_heading():
             )
         ],
         [Result(status=ResultStatus.SUCCESS, result={"root_name": "Settings"})],
-        [
-            Result(
-                status=ResultStatus.SUCCESS,
-                result=[{"control_text": "Display", "control_type": "Text"}],
-            )
+    ]
+    wrong_heading_result = [
+        Result(
+            status=ResultStatus.SUCCESS,
+            result=[{"control_text": "Display", "control_type": "Text"}],
+        )
+    ]
+    dispatcher.execute_commands.side_effect = [
+        *setup_results,
+        *[
+            wrong_heading_result
+            for _ in range(5)
         ],
     ]
 
-    assert not await _verify_settings_page(dispatcher, "start ms-settings:sound")
+    with patch(
+        "ufo.agents.processors.strategies.host_agent_processing_strategy.asyncio.sleep",
+        new_callable=AsyncMock,
+    ):
+        assert not await _verify_settings_page(
+            dispatcher, "start ms-settings:sound"
+        )
 
 
 if __name__ == "__main__":

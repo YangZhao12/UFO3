@@ -19,6 +19,7 @@ while providing enhanced modularity, error handling, and extensibility.
 import asyncio
 import json
 import time
+import unicodedata
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -1114,38 +1115,73 @@ _SETTINGS_PAGE_HEADINGS = {
     "system": {"system", "系统"},
 }
 
+_SETTINGS_VERIFICATION_ATTEMPTS = 5
+_SETTINGS_VERIFICATION_INTERVAL_SECONDS = 0.5
+
+
+def _normalize_settings_text(value: Any) -> str:
+    """Normalize localized UIA text while removing invisible formatting marks."""
+    normalized = unicodedata.normalize("NFKC", str(value or ""))
+    normalized = "".join(
+        character
+        for character in normalized
+        if unicodedata.category(character) != "Cf"
+    )
+    return " ".join(normalized.casefold().split())
+
+
+def _matches_settings_heading(value: Any, expected_headings: set[str]) -> bool:
+    """Match an exact heading or a heading followed by a page-path separator."""
+    visible_text = _normalize_settings_text(value)
+    return any(
+        visible_text == heading
+        or any(
+            visible_text.startswith(f"{heading}{separator}")
+            for separator in (" ", ">", "/", "-", "›", "→", ":")
+        )
+        for heading in expected_headings
+    )
+
 
 async def _verify_settings_page(
     command_dispatcher: BasicCommandDispatcher, command: str
 ) -> bool:
     """Verify a supported Settings page through deterministic UIA data."""
     page = get_settings_uri_page(command) if isinstance(command, str) else None
-    expected_headings = _SETTINGS_PAGE_HEADINGS.get(page)
+    expected_headings = {
+        _normalize_settings_text(heading)
+        for heading in _SETTINGS_PAGE_HEADINGS.get(page, set())
+    }
     if not expected_headings:
         return False
 
-    desktop_result = await command_dispatcher.execute_commands(
-        [
-            Command(
-                tool_name="get_desktop_app_info",
-                parameters={"remove_empty": True, "refresh_app_windows": True},
-                tool_type="data_collection",
+    settings_window = None
+    for attempt in range(_SETTINGS_VERIFICATION_ATTEMPTS):
+        desktop_result = await command_dispatcher.execute_commands(
+            [
+                Command(
+                    tool_name="get_desktop_app_info",
+                    parameters={"remove_empty": True, "refresh_app_windows": True},
+                    tool_type="data_collection",
+                )
+            ]
+        )
+        if desktop_result and desktop_result[0].status == ResultStatus.SUCCESS:
+            windows = desktop_result[0].result or []
+            settings_window = next(
+                (
+                    window
+                    for window in windows
+                    if _normalize_settings_text(window.get("name"))
+                    in {"settings", "设置"}
+                ),
+                None,
             )
-        ]
-    )
-    if not desktop_result or desktop_result[0].status != ResultStatus.SUCCESS:
-        return False
+        if settings_window:
+            break
+        if attempt < _SETTINGS_VERIFICATION_ATTEMPTS - 1:
+            await asyncio.sleep(_SETTINGS_VERIFICATION_INTERVAL_SECONDS)
 
-    windows = desktop_result[0].result or []
-    settings_window = next(
-        (
-            window
-            for window in windows
-            if str(window.get("name", "")).strip().casefold()
-            in {"settings", "设置"}
-        ),
-        None,
-    )
     if not settings_window:
         return False
 
@@ -1164,32 +1200,37 @@ async def _verify_settings_page(
     if not selection_result or selection_result[0].status != ResultStatus.SUCCESS:
         return False
 
-    controls_result = await command_dispatcher.execute_commands(
-        [
-            Command(
-                tool_name="get_app_window_controls_info",
-                parameters={
-                    "field_list": [
+    for attempt in range(_SETTINGS_VERIFICATION_ATTEMPTS):
+        controls_result = await command_dispatcher.execute_commands(
+            [
+                Command(
+                    tool_name="get_app_window_controls_info",
+                    parameters={
+                        "field_list": [
+                            "control_text",
+                            "control_name",
+                            "control_title",
+                            "control_type",
+                        ]
+                    },
+                    tool_type="data_collection",
+                )
+            ]
+        )
+        if controls_result and controls_result[0].status == ResultStatus.SUCCESS:
+            for control in controls_result[0].result or []:
+                if any(
+                    _matches_settings_heading(control.get(field), expected_headings)
+                    for field in (
                         "control_text",
                         "control_name",
                         "control_title",
-                        "control_type",
-                    ]
-                },
-                tool_type="data_collection",
-            )
-        ]
-    )
-    if not controls_result or controls_result[0].status != ResultStatus.SUCCESS:
-        return False
-
-    for control in controls_result[0].result or []:
-        visible_text = {
-            str(control.get(field, "")).strip().casefold()
-            for field in ("control_text", "control_name", "control_title", "name")
-        }
-        if visible_text & expected_headings:
-            return True
+                        "name",
+                    )
+                ):
+                    return True
+        if attempt < _SETTINGS_VERIFICATION_ATTEMPTS - 1:
+            await asyncio.sleep(_SETTINGS_VERIFICATION_INTERVAL_SECONDS)
     return False
 
 
