@@ -192,6 +192,28 @@ async def test_settings_page_verification_requires_visible_heading():
 
 
 @pytest.mark.asyncio
+async def test_system_settings_page_verification_requires_visible_heading():
+    dispatcher = AsyncMock()
+    dispatcher.execute_commands.side_effect = [
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"id": "7", "name": "Settings"}],
+            )
+        ],
+        [Result(status=ResultStatus.SUCCESS, result={"root_name": "Settings"})],
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"control_text": "System", "control_type": "Text"}],
+            )
+        ],
+    ]
+
+    assert await _verify_settings_page(dispatcher, "start ms-settings:system")
+
+
+@pytest.mark.asyncio
 async def test_settings_page_verification_rejects_wrong_heading():
     dispatcher = AsyncMock()
     dispatcher.execute_commands.side_effect = [

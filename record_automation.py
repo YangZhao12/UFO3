@@ -1,37 +1,18 @@
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 
-POWER_TIMEOUTS = (
-    ("SUB_VIDEO", "VIDEOIDLE", "monitor-timeout-ac"),
-    ("SUB_SLEEP", "STANDBYIDLE", "standby-timeout-ac"),
-    ("SUB_SLEEP", "HIBERNATEIDLE", "hibernate-timeout-ac"),
+AC_POWER_TIMEOUTS = (
+    "monitor-timeout-ac",
+    "standby-timeout-ac",
+    "hibernate-timeout-ac",
 )
 
 
 def disable_ac_power_timeouts() -> None:
-    for subgroup, setting, change_name in POWER_TIMEOUTS:
-        result = subprocess.run(
-            ["powercfg", "/query", "SCHEME_CURRENT", subgroup, setting],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        ac_index = re.search(
-            r"^\s*.*(?:AC|交流).*?:\s*(0x[0-9a-f]+)\s*$",
-            result.stdout,
-            flags=re.IGNORECASE | re.MULTILINE,
-        )
-        if ac_index is None:
-            raise RuntimeError(f"Unable to read the AC power setting for {setting}")
-
-        if int(ac_index.group(1), 16) == 0:
-            print(f"Power setting {change_name} is already disabled; skipping.")
-            continue
-
+    for change_name in AC_POWER_TIMEOUTS:
         subprocess.run(
             ["powercfg", "/change", change_name, "0"],
             check=True,

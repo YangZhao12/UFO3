@@ -1041,6 +1041,57 @@ class HostActionExecutionStrategy(BaseProcessingStrategy):
         except Exception as e:
             raise Exception(f"Generic command execution failed: {str(e)}")
 
+    def _create_action_info(
+        self,
+        parsed_response: HostAgentResponse,
+        execution_result: List[Result],
+        target_registry: TargetRegistry,
+        selected_target_id: str,
+    ) -> ActionCommandInfo:
+        """
+        Create action information object for memory and tracking.
+        This method constructs a comprehensive action information object that
+        captures the complete context of the executed action, including the
+        target object, execution results, and status information.
+        :param parsed_response: Parsed response with action details
+        :param execution_result: Results from action execution
+        :param target_registry: Target registry containing available targets
+        :param selected_target_id: ID of the selected target
+        :return: ActionCommandInfo object with complete execution details
+        """
+        try:
+            # Get target object for action info
+            if not parsed_response.function:
+                return ActionCommandInfo(function="no_action", arguments={})
+
+            target_object = None
+            if target_registry and selected_target_id:
+                target_object = target_registry.get(selected_target_id)
+
+            # Create action info
+            action_info = ActionCommandInfo(
+                function=parsed_response.function,
+                arguments=parsed_response.arguments or {},
+                target=target_object,
+                status=parsed_response.status,
+                result=(
+                    execution_result[0] if execution_result else Result(status="none")
+                ),
+            )
+
+            return action_info
+
+        except Exception as e:
+            self.logger.warning(f"Failed to create action info: {str(e)}")
+            # Return basic action info on failure
+            return ActionCommandInfo(
+                function=parsed_response.function or "unknown",
+                arguments=parsed_response.arguments or {},
+                target=None,
+                status=parsed_response.status or "unknown",
+                result=Result(status="error", result={"error": str(e)}),
+            )
+
 
 def _is_successful_settings_launch(
     function_name: str,
@@ -1060,6 +1111,7 @@ def _is_successful_settings_launch(
 
 _SETTINGS_PAGE_HEADINGS = {
     "sound": {"sound", "声音"},
+    "system": {"system", "系统"},
 }
 
 
@@ -1139,57 +1191,6 @@ async def _verify_settings_page(
         if visible_text & expected_headings:
             return True
     return False
-
-    def _create_action_info(
-        self,
-        parsed_response: HostAgentResponse,
-        execution_result: List[Result],
-        target_registry: TargetRegistry,
-        selected_target_id: str,
-    ) -> ActionCommandInfo:
-        """
-        Create action information object for memory and tracking.
-        This method constructs a comprehensive action information object that
-        captures the complete context of the executed action, including the
-        target object, execution results, and status information.
-        :param parsed_response: Parsed response with action details
-        :param execution_result: Results from action execution
-        :param target_registry: Target registry containing available targets
-        :param selected_target_id: ID of the selected target
-        :return: ActionCommandInfo object with complete execution details
-        """
-        try:
-            # Get target object for action info
-            if not parsed_response.function:
-                return ActionCommandInfo(function="no_action", arguments={})
-
-            target_object = None
-            if target_registry and selected_target_id:
-                target_object = target_registry.get(selected_target_id)
-
-            # Create action info
-            action_info = ActionCommandInfo(
-                function=parsed_response.function,
-                arguments=parsed_response.arguments or {},
-                target=target_object,
-                status=parsed_response.status,
-                result=(
-                    execution_result[0] if execution_result else Result(status="none")
-                ),
-            )
-
-            return action_info
-
-        except Exception as e:
-            self.logger.warning(f"Failed to create action info: {str(e)}")
-            # Return basic action info on failure
-            return ActionCommandInfo(
-                function=parsed_response.function or "unknown",
-                arguments=parsed_response.arguments or {},
-                target=None,
-                status=parsed_response.status or "unknown",
-                result=Result(status="error", result={"error": str(e)}),
-            )
 
 
 @depends_on("session_step")

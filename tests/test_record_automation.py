@@ -1,4 +1,3 @@
-from subprocess import CompletedProcess
 from unittest.mock import MagicMock
 
 import pytest
@@ -6,46 +5,19 @@ import pytest
 import record_automation
 
 
-def test_disable_ac_power_timeouts_skips_settings_already_zero(monkeypatch):
-    run = MagicMock(
-        return_value=CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout="Current AC Power Setting Index: 0x00000000\n",
-        )
-    )
+def test_disable_ac_power_timeouts_sets_each_timeout_to_zero(monkeypatch):
+    run = MagicMock()
     monkeypatch.setattr(record_automation.subprocess, "run", run)
 
     record_automation.disable_ac_power_timeouts()
 
     assert run.call_count == 3
-    assert all(call.args[0][1] == "/query" for call in run.call_args_list)
-
-
-def test_disable_ac_power_timeouts_changes_only_nonzero_settings(monkeypatch):
-    query_results = iter(
-        [
-            CompletedProcess([], 0, stdout="当前交流电源设置索引: 0x0000003c\n"),
-            CompletedProcess([], 0, stdout="当前交流电源设置索引: 0x00000000\n"),
-            CompletedProcess([], 0, stdout="当前交流电源设置索引: 0x00000078\n"),
-        ]
-    )
-    change_calls = []
-
-    def run(command, **kwargs):
-        if command[1] == "/query":
-            return next(query_results)
-        change_calls.append(command)
-        return CompletedProcess(command, 0)
-
-    monkeypatch.setattr(record_automation.subprocess, "run", run)
-
-    record_automation.disable_ac_power_timeouts()
-
-    assert change_calls == [
+    assert [call.args[0] for call in run.call_args_list] == [
         ["powercfg", "/change", "monitor-timeout-ac", "0"],
+        ["powercfg", "/change", "standby-timeout-ac", "0"],
         ["powercfg", "/change", "hibernate-timeout-ac", "0"],
     ]
+    assert all(call.kwargs == {"check": True} for call in run.call_args_list)
 
 
 def test_find_ffmpeg_uses_winget_link_when_not_on_path(monkeypatch, tmp_path):
