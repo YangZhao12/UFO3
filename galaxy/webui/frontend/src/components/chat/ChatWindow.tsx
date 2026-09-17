@@ -25,11 +25,12 @@ const filterMessages = (messages: Message[], query: string, kind: string) => {
 };
 
 const ChatWindow: React.FC = () => {
-  const { messages, searchQuery, messageKind, isTaskStopped } = useGalaxyStore(
+  const { messages, searchQuery, messageKind, isTaskRunning, isTaskStopped } = useGalaxyStore(
     (state) => ({
       messages: state.messages,
       searchQuery: state.ui.searchQuery,
       messageKind: state.ui.messageKindFilter,
+      isTaskRunning: state.ui.isTaskRunning,
       isTaskStopped: state.ui.isTaskStopped,
     }),
     shallow,
@@ -62,33 +63,6 @@ const ChatWindow: React.FC = () => {
     
     return steps;
   }, [filteredMessages]);
-
-  // Check if we're waiting for agent response (based on ALL messages, not filtered)
-  const isWaitingForResponse = useMemo(() => {
-    if (messages.length === 0) return false;
-    
-    const lastMessage = messages[messages.length - 1];
-    
-    // If last message is from user, we're waiting for response
-    if (lastMessage.role === 'user') {
-      return true;
-    }
-    
-    // If last message is agent but it's an action (not final response), we're still waiting
-    if (lastMessage.role === 'assistant' && lastMessage.kind === 'action') {
-      return true;
-    }
-    
-    // If last message is agent response but status is pending/running/continue, still waiting
-    if (lastMessage.role === 'assistant' && lastMessage.kind === 'response') {
-      const status = String(lastMessage.payload?.status || lastMessage.payload?.result?.status || '').toLowerCase();
-      if (status === 'continue' || status === 'running' || status === 'pending' || status === '') {
-        return true;
-      }
-    }
-    
-    return false;
-  }, [messages]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -123,7 +97,7 @@ const ChatWindow: React.FC = () => {
               ))}
               
               {/* Loading indicator when waiting for agent response */}
-              {isWaitingForResponse && !isTaskStopped && (
+              {isTaskRunning && !isTaskStopped && (
                 <div className="ml-14 flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/30 to-blue-950/20 px-4 py-2.5 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />
                   <span className="text-xs font-medium text-cyan-300/90">

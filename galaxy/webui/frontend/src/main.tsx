@@ -503,11 +503,64 @@ const handleDeviceEvent = (event: GalaxyEvent) => {
 const handleGenericEvent = (event: GalaxyEvent) => {
   // Handle session control messages (use 'type' field instead of 'event_type')
   const messageType = event.type || event.event_type;
+  const store = useGalaxyStore.getState();
+
+  if (messageType === 'request_received') {
+    store.setTaskRunning(true);
+    return;
+  }
+
+  if (messageType === 'request_completed') {
+    store.setTaskRunning(false);
+
+    const lastMessage = store.messages[store.messages.length - 1];
+    const lastStatus = String(
+      lastMessage?.payload?.status || lastMessage?.payload?.result?.status || '',
+    ).toLowerCase();
+    const alreadyHasTerminalResponse =
+      lastMessage?.role === 'assistant' &&
+      lastMessage.kind === 'response' &&
+      ['finish', 'finished', 'complete', 'completed', 'success'].includes(lastStatus);
+
+    if (!alreadyHasTerminalResponse) {
+      const resultText = typeof event.result === 'string' && event.result.length <= 500
+        ? event.result
+        : 'Task completed successfully.';
+      const sessionId = store.ensureSession(event.data?.session_id || null);
+      store.addMessage({
+        id: createClientId(),
+        sessionId,
+        role: 'assistant',
+        kind: 'response',
+        author: 'UFO',
+        content: resultText,
+        payload: { status: 'finish', result: event.result },
+        timestamp: Date.now(),
+      });
+    }
+    return;
+  }
+
+  if (messageType === 'request_failed') {
+    store.setTaskRunning(false);
+    const sessionId = store.ensureSession(event.data?.session_id || null);
+    store.addMessage({
+      id: createClientId(),
+      sessionId,
+      role: 'assistant',
+      kind: 'response',
+      author: 'UFO',
+      content: event.error || event.message || 'Task failed.',
+      payload: { status: 'fail', error: event.error },
+      timestamp: Date.now(),
+    });
+    return;
+  }
 
   // Handle reset/next session acknowledgments
   if (messageType === 'reset_acknowledged') {
     console.log('✅ Session reset acknowledged:', event);
-    useGalaxyStore.getState().pushNotification({
+    store.pushNotification({
       id: `reset-${Date.now()}`,
       title: 'Session Reset',
       description: event.message || 'Session has been reset successfully',
