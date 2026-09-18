@@ -39,9 +39,10 @@ from ufo.agents.processors.schemas.actions import (
 from ufo.agents.processors.strategies.processing_strategy import BaseProcessingStrategy
 from aip.messages import Command, Result
 from ufo.llm import AgentType
+from ufo.llm.config_helper import get_agent_config
 from ufo.module.context import Context
 from ufo.module.dispatcher import BasicCommandDispatcher
-from config.config_loader import get_ufo_config
+from config.config_loader import get_galaxy_config, get_ufo_config
 
 # Load configuration
 ufo_config = get_ufo_config()
@@ -95,6 +96,7 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
         :return: ProcessingResult containing parsed response or error information
         """
         try:
+            llm_started_at = time.perf_counter()
             # Extract context variables
             session_step = context.get_local("session_step", 0)
             device_info = context.get_local("device_info", {})
@@ -114,16 +116,28 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
                 weaving_mode,
                 request_logger,
             )
+            prompt_built_at = time.perf_counter()
 
             # Step 2: Get LLM response with retry logic
             self.logger.info("Sending request to LLM")
             response_text, llm_cost = await self._get_llm_response_with_retry(
-                agent, prompt_message
+                agent, prompt_message, weaving_mode
             )
+            response_received_at = time.perf_counter()
 
             # Step 3: Parse and validate response
             self.logger.info("Parsing LLM response")
             parsed_response = self._parse_and_validate_response(agent, response_text)
+            response_parsed_at = time.perf_counter()
+
+            llm_metrics = {
+                "prompt_build_duration": prompt_built_at - llm_started_at,
+                "api_duration": response_received_at - prompt_built_at,
+                "parse_duration": response_parsed_at - response_received_at,
+                "prompt_chars": len(json.dumps(prompt_message, default=str)),
+                "response_chars": len(response_text),
+            }
+            self.logger.info("Constellation LLM metrics: %s", llm_metrics)
 
             self.logger.info(f"Constellation LLM interaction completed successfully")
 
@@ -133,6 +147,7 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
                     "parsed_response": parsed_response,
                     "response_text": response_text,
                     "llm_cost": llm_cost,
+                    "llm_metrics": llm_metrics,
                     "prompt_message": prompt_message,
                     **parsed_response.model_dump(),  # Include extracted structured data
                 },
@@ -222,13 +237,28 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
             self.logger.warning(f"Failed to log request data: {str(e)}")
 
     async def _get_llm_response_with_retry(
-        self, agent: "ConstellationAgent", prompt_message: Dict[str, Any]
+        self,
+        agent: "ConstellationAgent",
+        prompt_message: Dict[str, Any],
+        weaving_mode: WeavingMode,
     ) -> tuple[str, float]:
         """
         Get LLM response with retry logic for JSON parsing failures.
         """
         max_retries = ufo_config.system.JSON_PARSING_RETRY
         last_exception = None
+        mode_name = (
+            weaving_mode.value if isinstance(weaving_mode, WeavingMode) else weaving_mode
+        ).upper()
+        agent_config = get_agent_config(AgentType.CONSTELLATION)
+        model_name = agent_config.get(
+            f"{mode_name}_API_MODEL", agent_config.get("API_MODEL")
+        )
+        constellation_config = get_galaxy_config().constellation
+        max_tokens = constellation_config.get(
+            f"{mode_name}_MAX_TOKENS",
+            constellation_config.get("MAX_TOKENS", 3000),
+        )
 
         for retry_count in range(max_retries):
             try:
@@ -240,6 +270,8 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
                     prompt_message,
                     AgentType.CONSTELLATION,
                     True,  # use_backup_engine
+                    model_name,
+                    max_tokens,
                 )
 
                 # Validate that response can be parsed as JSON

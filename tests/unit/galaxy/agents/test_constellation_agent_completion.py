@@ -9,10 +9,30 @@ from galaxy.agents.constellation_agent_states import (
     ContinueConstellationAgentState,
 )
 from galaxy.constellation.enums import ConstellationState
+from galaxy.core.events import EventType
 from galaxy.client.components.task_queue_manager import TaskQueueManager
 from galaxy.client.components.types import TaskRequest
 from galaxy.galaxy_client import GalaxyClient
 from ufo.module.context import Context
+
+
+@pytest.mark.asyncio
+async def test_completion_events_are_collected_within_batch_window():
+    queue = asyncio.Queue()
+    first_event = SimpleNamespace(task_id="task-1")
+    second_event = SimpleNamespace(task_id="task-2")
+
+    async def publish_second_event():
+        await asyncio.sleep(0.01)
+        await queue.put(second_event)
+
+    publisher = asyncio.create_task(publish_second_event())
+    events = await ContinueConstellationAgentState._collect_completion_events(
+        queue, first_event, batch_window=0.05
+    )
+    await publisher
+
+    assert events == [first_event, second_event]
 
 
 @pytest.mark.asyncio
@@ -65,6 +85,38 @@ async def test_failed_constellation_still_runs_editing():
 
     agent.process_editing.assert_awaited_once()
     synchronizer.complete_modifications.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_explicit_safe_task_skips_editing():
+    task = SimpleNamespace(task_data={"skip_constellation_editing": True})
+    constellation = SimpleNamespace(
+        state=ConstellationState.EXECUTING,
+        tasks={"task-1": task},
+        get_task=Mock(return_value=task),
+    )
+    event = SimpleNamespace(
+        task_id="task-1",
+        event_type=EventType.TASK_COMPLETED,
+        data={"constellation": constellation},
+    )
+    synchronizer = Mock()
+    synchronizer.merge_and_sync_constellation_states.return_value = constellation
+    agent = SimpleNamespace(
+        logger=Mock(),
+        task_completion_queue=asyncio.Queue(),
+        orchestrator=SimpleNamespace(_modification_synchronizer=synchronizer),
+        process_editing=AsyncMock(),
+        status=ConstellationAgentStatus.CONTINUE.value,
+        _current_constellation=None,
+    )
+    await agent.task_completion_queue.put(event)
+
+    await ContinueConstellationAgentState().handle(agent, Mock(spec=Context))
+
+    agent.process_editing.assert_not_awaited()
+    synchronizer.complete_modifications.assert_called_once_with(["task-1"])
+    assert agent._current_constellation is constellation
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 
 import logging
 from ufo.llm import AgentType
-from typing import Tuple
+from typing import Optional, Tuple
 
 from .base import BaseService
 from .config_helper import get_agent_config
@@ -16,6 +16,8 @@ def get_completion(
     agent: str = AgentType.APP,
     use_backup_engine: bool = True,
     configs: dict = {},
+    model_name: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> Tuple[str, float]:
     """
     Get completion for the given messages.
@@ -26,7 +28,13 @@ def get_completion(
     """
 
     responses, cost = get_completions(
-        messages, agent=agent, use_backup_engine=use_backup_engine, n=1, configs=configs
+        messages,
+        agent=agent,
+        use_backup_engine=use_backup_engine,
+        n=1,
+        configs=configs,
+        model_name=model_name,
+        max_tokens=max_tokens,
     )
     return responses[0], cost
 
@@ -37,6 +45,8 @@ def get_completions(
     use_backup_engine: bool = True,
     n: int = 1,
     configs: dict = {},
+    model_name: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> Tuple[list, float]:
     """
     Get completions for the given messages.
@@ -92,7 +102,12 @@ def get_completions(
         api_type_lower = api_type.lower()
         service = BaseService.get_service(api_type_lower, agent_type, api_model.lower())
         if service:
-            response, cost = service.chat_completion(messages, n)
+            completion_kwargs = {}
+            if model_name:
+                completion_kwargs["model"] = model_name
+            if max_tokens is not None:
+                completion_kwargs["max_tokens"] = max_tokens
+            response, cost = service.chat_completion(messages, n, **completion_kwargs)
             return response, cost
         else:
             raise ValueError(f"API_TYPE {api_type} not supported")
@@ -106,6 +121,8 @@ def get_completions(
                 use_backup_engine=False,
                 n=n,
                 configs=configs,
+                model_name=None,
+                max_tokens=max_tokens,
             )
         else:
             raise e

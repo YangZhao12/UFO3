@@ -1,7 +1,7 @@
 import subprocess
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -15,9 +15,11 @@ from ufo.client.mcp.local_servers.cli_mcp_server import (
     is_settings_uri_command,
 )
 from ufo.agents.processors.strategies.host_agent_processing_strategy import (
+    HostActionExecutionStrategy,
     _is_successful_settings_launch,
     _verify_settings_page,
 )
+from ufo.agents.processors.schemas.response_schema import HostAgentResponse
 from aip.messages import Result, ResultStatus
 
 
@@ -214,6 +216,30 @@ async def test_system_settings_page_verification_requires_visible_heading():
 
 
 @pytest.mark.asyncio
+async def test_background_settings_page_verification_requires_visible_heading():
+    dispatcher = AsyncMock()
+    dispatcher.execute_commands.side_effect = [
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"id": "7", "name": "Settings"}],
+            )
+        ],
+        [Result(status=ResultStatus.SUCCESS, result={"root_name": "Settings"})],
+        [
+            Result(
+                status=ResultStatus.SUCCESS,
+                result=[{"control_text": "Background", "control_type": "Text"}],
+            )
+        ],
+    ]
+
+    assert await _verify_settings_page(
+        dispatcher, "start ms-settings:personalization-background"
+    )
+
+
+@pytest.mark.asyncio
 async def test_settings_page_verification_waits_for_localized_hierarchical_heading():
     dispatcher = AsyncMock()
     dispatcher.execute_commands.side_effect = [
@@ -275,6 +301,52 @@ async def test_settings_page_verification_rejects_wrong_heading():
         assert not await _verify_settings_page(
             dispatcher, "start ms-settings:sound"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("page_verified", "expected_status"),
+    [(False, "CONTINUE"), (True, "FINISH")],
+)
+async def test_settings_launch_status_requires_page_verification(
+    page_verified, expected_status
+):
+    strategy = HostActionExecutionStrategy()
+    parsed_response = HostAgentResponse(
+        observation="Settings is not yet visible",
+        thought="Launch the requested Settings page",
+        status="FINISH",
+        function="run_shell",
+        arguments={"bash_command": "start ms-settings:sound"},
+        result="Task is in progress",
+    )
+    execution_result = [Result(status=ResultStatus.SUCCESS, result=None)]
+    context = MagicMock()
+    context.get_local.side_effect = lambda key, default=None: {
+        "parsed_response": parsed_response,
+        "function_name": "run_shell",
+        "target_registry": MagicMock(),
+        "status": "FINISH",
+    }.get(key, default)
+    context.get.return_value = 0
+    context.global_context.command_dispatcher = AsyncMock()
+
+    with patch.object(
+        strategy,
+        "_execute_generic_command",
+        new=AsyncMock(return_value=execution_result),
+    ), patch.object(
+        strategy,
+        "_create_action_info",
+        return_value=MagicMock(target=None),
+    ), patch(
+        "ufo.agents.processors.strategies.host_agent_processing_strategy._verify_settings_page",
+        new=AsyncMock(return_value=page_verified),
+    ):
+        result = await strategy.execute(MagicMock(), context)
+
+    assert result.success
+    assert result.data["status"] == expected_status
 
 
 if __name__ == "__main__":

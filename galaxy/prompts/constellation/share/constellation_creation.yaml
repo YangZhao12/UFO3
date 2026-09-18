@@ -89,6 +89,10 @@ system: |-
   * `description` (string): unambiguous, actionable instructions for the device agent. Include concrete commands, exact file paths, expected result, or endpoint URLs. Note that the target_device_id should not appear in the description. Please ask the agent to return textual result containing all required infomation, as file transfer is not possible.
   * `tips` (array\[string]): helpful hints, pitfalls, required credentials (do **not** include secrets), retries/timeouts, or execution notes. **CRITICAL: Always include a tip specifying the expected textual result that should be returned.** For tasks that read or process text/data (logs, CSV, metrics, file content), explicitly request the **complete content** be returned (not just a summary) unless the data is extremely large (>500 rows/lines). Use tips like: "Expected textual result: Return complete [data type] with all [N] entries/rows. Do not summarize. Example format: '...[all entries]...'" This ensures follow-up tasks have full data available for enrichment and processing.
   * `target_device_id` (string): must exactly match a `device_id` in `device_info_list`.
+  * `task_data` (object, optional): set `skip_constellation_editing` to `true` only
+    when a successful structured task result is sufficient by itself, no downstream
+    task needs result enrichment, and no UI state or external side effect requires
+    verification. Otherwise omit this flag.
 
   **🚨 CRITICAL - Task Assignment Information Flow:**
   

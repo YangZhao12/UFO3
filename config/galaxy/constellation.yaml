@@ -8,6 +8,9 @@ RECONNECT_DELAY: 5.0  # Delay before reconnecting in seconds
 MAX_CONCURRENT_TASKS: 6  # Maximum concurrent tasks across the constellation
 MAX_STEP: 15  # Maximum steps per session
 MAX_TOKENS: 8000  # Maximum output tokens for constellation LLM calls
+CREATION_MAX_TOKENS: 5000
+EDITING_MAX_TOKENS: 3000
+EDITING_BATCH_WINDOW: 0.2  # Merge near-simultaneous task completion events
 MAX_RETRY: 1  # Avoid repeated long-running retries for reasoning models
 TIMEOUT: 300  # Allow large constellation prompts up to five minutes per attempt
 

@@ -161,6 +161,8 @@ class BasicAgent(ABC):
         message: List[dict],
         namescope: str,
         use_backup_engine: bool,
+        model_name: Optional[str] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[str, float]:
         """
         Get the response for the prompt.
@@ -170,7 +172,11 @@ class BasicAgent(ABC):
         :return: The response.
         """
         response_string, cost = llm_call.get_completion(
-            message, namescope, use_backup_engine=use_backup_engine
+            message,
+            namescope,
+            use_backup_engine=use_backup_engine,
+            model_name=model_name,
+            max_tokens=max_tokens,
         )
         return response_string, cost
 

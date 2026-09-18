@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Dict, Type
 
 from galaxy.agents.schema import WeavingMode
 from galaxy.constellation.enums import ConstellationState
+from galaxy.core.events import EventType
+from config.config_loader import get_galaxy_config
 from ufo.agents.states.basic import AgentState, AgentStateManager
 from ufo.module.context import Context, ContextNames
 
@@ -145,6 +147,39 @@ class StartConstellationAgentState(ConstellationAgentState):
 class ContinueConstellationAgentState(ConstellationAgentState):
     """Continue state - wait for task completion events"""
 
+    @staticmethod
+    async def _collect_completion_events(queue, first_event, batch_window: float):
+        events = [first_event]
+        deadline = asyncio.get_running_loop().time() + max(batch_window, 0.0)
+
+        while True:
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            try:
+                events.append(await asyncio.wait_for(queue.get(), timeout=remaining))
+            except asyncio.TimeoutError:
+                break
+
+        return events
+
+    @staticmethod
+    def _can_skip_editing(completed_task_events, constellation) -> bool:
+        if not completed_task_events:
+            return False
+
+        for event in completed_task_events:
+            if getattr(event, "event_type", None) != EventType.TASK_COMPLETED:
+                return False
+            task = constellation.get_task(event.task_id)
+            if (
+                task is None
+                or not task.task_data.get("skip_constellation_editing", False)
+            ):
+                return False
+
+        return True
+
     async def _get_merged_constellation(
         self, agent: "ConstellationAgent", orchestrator_constellation
     ):
@@ -188,20 +223,19 @@ class ContinueConstellationAgentState(ConstellationAgentState):
             agent.logger.info("Continue monitoring for task completion events...")
             context.set(ContextNames.WEAVING_MODE, WeavingMode.EDITING)
 
-            # Collect all pending task completion events in queue
-            completed_task_events = []
-
             # Wait for at least one event (blocking)
             first_event = await agent.task_completion_queue.get()
-            completed_task_events.append(first_event)
-
-            # Collect any other pending events (non-blocking)
-            while not agent.task_completion_queue.empty():
-                try:
-                    event = agent.task_completion_queue.get_nowait()
-                    completed_task_events.append(event)
-                except asyncio.QueueEmpty:
-                    break
+            batch_window = get_galaxy_config().constellation.get(
+                "EDITING_BATCH_WINDOW", 0.2
+            )
+            batch_started_at = asyncio.get_running_loop().time()
+            completed_task_events = await self._collect_completion_events(
+                agent.task_completion_queue, first_event, batch_window
+            )
+            agent.logger.info(
+                "Collected task completion batch in %.3fs",
+                asyncio.get_running_loop().time() - batch_started_at,
+            )
 
             # Log collected events
             task_ids = [event.task_id for event in completed_task_events]
@@ -231,15 +265,23 @@ class ContinueConstellationAgentState(ConstellationAgentState):
                 agent.status = ConstellationAgentStatus.FINISH.value
                 return
 
+            if self._can_skip_editing(completed_task_events, merged_constellation):
+                agent._current_constellation = merged_constellation
+                synchronizer = agent.orchestrator._modification_synchronizer
+                if synchronizer:
+                    synchronizer.complete_modifications(task_ids)
+                agent.logger.info(
+                    "Skipping constellation editing for explicitly safe tasks: %s",
+                    task_ids,
+                )
+                return
+
             # Update constellation based on task completion
             await agent.process_editing(
                 context=context,
                 task_ids=task_ids,  # Pass all collected task IDs
                 before_constellation=merged_constellation,  # Use merged version
             )
-
-            # Sleep for waiting
-            await asyncio.sleep(0.5)
 
         except Exception as e:
             agent.logger.error(f"Error in continue state: {e}")

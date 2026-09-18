@@ -857,11 +857,19 @@ class HostActionExecutionStrategy(BaseProcessingStrategy):
             settings_command = (parsed_response.arguments or {}).get("bash_command")
             if _is_successful_settings_launch(
                 function_name, parsed_response.arguments, execution_result
-            ) and await _verify_settings_page(command_dispatcher, settings_command):
-                status = "FINISH"
-                self.logger.info(
-                    "Settings page verified through UIA; finishing without an extra LLM confirmation round"
+            ):
+                settings_page_verified = await _verify_settings_page(
+                    command_dispatcher, settings_command
                 )
+                status = "FINISH" if settings_page_verified else "CONTINUE"
+                if settings_page_verified:
+                    self.logger.info(
+                        "Settings page verified through UIA; finishing without an extra LLM confirmation round"
+                    )
+                else:
+                    self.logger.info(
+                        "Settings page not verified through UIA; continuing for post-action validation"
+                    )
 
             return ProcessingResult(
                 success=True,
@@ -1113,6 +1121,7 @@ def _is_successful_settings_launch(
 _SETTINGS_PAGE_HEADINGS = {
     "sound": {"sound", "声音"},
     "system": {"system", "系统"},
+    "personalization-background": {"background", "背景"},
 }
 
 _SETTINGS_VERIFICATION_ATTEMPTS = 5

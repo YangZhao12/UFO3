@@ -124,10 +124,11 @@ class BaseOpenAIService(BaseService):
                     temperature=temperature,
                     max_tokens=max_tokens,
                     top_p=top_p,
+                    model=kwargs.pop("model", None),
                 )
             # Build base parameters
             base_params = {
-                "model": self.model,
+                "model": kwargs.pop("model", None) or self.model,
                 "messages": messages,
                 "n": 1,
                 **kwargs,
@@ -234,14 +235,16 @@ class BaseOpenAIService(BaseService):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         top_p: Optional[float] = None,
+        model: Optional[str] = None,
     ) -> Tuple[List[str], Optional[float]]:
         """
         Generate a completion using the Responses API.
         """
         inputs = self._messages_to_responses_input(messages)
+        selected_model = model or self.model
 
         base_params: Dict[str, Any] = {
-            "model": self.model,
+            "model": selected_model,
             "input": inputs,
         }
 
@@ -253,6 +256,8 @@ class BaseOpenAIService(BaseService):
                     "top_p": top_p,
                 }
             )
+        elif reasoning_effort := self.config_llm.get("REASONING_EFFORT"):
+            base_params["reasoning"] = {"effort": reasoning_effort}
 
         if max_tokens is not None:
             base_params["max_output_tokens"] = max_tokens
@@ -289,7 +294,7 @@ class BaseOpenAIService(BaseService):
 
         cost = self.get_cost_estimator(
             self.api_type,
-            self.model,
+            selected_model,
             self.prices,
             input_tokens,
             output_tokens,
@@ -661,6 +666,7 @@ class OpenAIService(BaseOpenAIService):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         top_p: Optional[float] = None,
+        model: Optional[str] = None,
         **kwargs: Any,
     ) -> Tuple[List[str] | Dict[str, Any], Optional[float]]:
         """
@@ -684,6 +690,7 @@ class OpenAIService(BaseOpenAIService):
                 temperature,
                 max_tokens,
                 top_p,
+                model=model,
                 **kwargs,
             )
         else:

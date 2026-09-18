@@ -369,7 +369,9 @@ class ConstellationAgent(BasicAgent, IRequestProcessor, IResultProcessor):
             f"Tasks {task_ids} marked as completed, Agent's constellation updated, completed tasks ids: "
             f"{[t.task_id for t in before_constellation.get_completed_tasks()]}"
         )
+        pre_sync_started_at = time.perf_counter()
         await self._sync_constellation_to_mcp(before_constellation, context)
+        pre_sync_duration = time.perf_counter() - pre_sync_started_at
         self._log_constellation_state(
             before_constellation, "Task ID for constellation before editing: "
         )
@@ -397,7 +399,14 @@ class ConstellationAgent(BasicAgent, IRequestProcessor, IResultProcessor):
         await self._validate_and_update_constellation(after_constellation)
 
         # Sync and publish event
+        post_sync_started_at = time.perf_counter()
         await self._sync_constellation_to_mcp(after_constellation, context)
+        post_sync_duration = time.perf_counter() - post_sync_started_at
+        self.logger.info(
+            "Constellation MCP sync metrics: before=%.3fs, after=%.3fs",
+            pre_sync_duration,
+            post_sync_duration,
+        )
         self._log_constellation_state(
             after_constellation, "Task ID for constellation after editing: "
         )
@@ -405,11 +414,18 @@ class ConstellationAgent(BasicAgent, IRequestProcessor, IResultProcessor):
             after_constellation, "Dependency ID for constellation after editing: "
         )
 
+        timing_info = self._create_timing_info(start_time, end_time, duration)
+        timing_info.update(
+            {
+                "pre_mcp_sync_duration": pre_sync_duration,
+                "post_mcp_sync_duration": post_sync_duration,
+            }
+        )
         await self._publish_constellation_modified_event(
             before_constellation,
             after_constellation,
             task_ids,
-            self._create_timing_info(start_time, end_time, duration),
+            timing_info,
         )
 
         return after_constellation
