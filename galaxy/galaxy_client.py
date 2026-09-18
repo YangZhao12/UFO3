@@ -92,7 +92,7 @@ class GalaxyClient:
         galaxy_config = get_galaxy_config()
         device_info_path = galaxy_config.constellation.DEVICE_INFO
         self._device_config = ConstellationConfig.from_yaml(device_info_path)
-        self._device_config.task_timeout = galaxy_config.constellation.TIMEOUT
+        self._device_config.task_timeout = galaxy_config.constellation.TASK_TIMEOUT
 
         # Rich console and display manager
         self.console = Console()

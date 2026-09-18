@@ -707,6 +707,7 @@ class ConstellationRuntimeConfig:
     max_concurrent_tasks: int = 6
     max_step: int = 15
     timeout: float = 300.0
+    task_timeout: float = 900.0
     device_info: str = "config/galaxy/devices.yaml"
     log_to_markdown: bool = True
 
@@ -761,6 +762,7 @@ class ConstellationRuntimeConfig:
             "MAX_CONCURRENT_TASKS": "max_concurrent_tasks",
             "MAX_STEP": "max_step",
             "TIMEOUT": "timeout",
+            "TASK_TIMEOUT": "task_timeout",
             "DEVICE_INFO": "device_info",
         }
 

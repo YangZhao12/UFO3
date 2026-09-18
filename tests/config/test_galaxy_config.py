@@ -15,6 +15,13 @@ def test_galaxy_config_basic_loading():
     print("✅ Galaxy config loaded successfully")
 
 
+def test_api_and_device_task_timeouts_are_configured_separately():
+    config = get_galaxy_config()
+
+    assert config.constellation.TIMEOUT == 300
+    assert config.constellation.TASK_TIMEOUT == 900
+
+
 def test_galaxy_agent_config_access():
     """Test accessing agent configuration through structured attributes"""
     config = get_galaxy_config()
