@@ -118,6 +118,36 @@ class TestTaskConstellationOrchestrator:
         )
 
     @pytest.mark.asyncio
+    async def test_orchestration_ends_recording_once_per_device(self, mock_event_bus):
+        device_manager = MagicMock()
+        device_manager.end_recording_batch = AsyncMock()
+        orchestrator = TaskConstellationOrchestrator(
+            device_manager=device_manager,
+            enable_logging=False,
+            event_bus=mock_event_bus,
+        )
+        constellation = MagicMock()
+        constellation.constellation_id = "constellation-1"
+        constellation.tasks = {
+            "task-1": MagicMock(target_device_id="device-1"),
+            "task-2": MagicMock(target_device_id="device-1"),
+        }
+        orchestrator._validate_and_prepare_constellation = AsyncMock()
+        orchestrator._start_constellation_execution = AsyncMock(
+            return_value=MagicMock()
+        )
+        orchestrator._run_execution_loop = AsyncMock()
+        orchestrator._finalize_constellation_execution = AsyncMock(
+            return_value={"status": "completed"}
+        )
+        orchestrator._cleanup_constellation = AsyncMock()
+
+        result = await orchestrator.orchestrate_constellation(constellation)
+
+        assert result == {"status": "completed"}
+        device_manager.end_recording_batch.assert_awaited_once_with("device-1")
+
+    @pytest.mark.asyncio
     async def test_create_constellation_from_llm(self, orchestrator):
         """Test creating constellation from LLM output."""
         llm_output = """

@@ -613,6 +613,9 @@ class ConstellationDeviceManager:
             # Device is IDLE, execute task immediately
             return await self._execute_task_on_device(device_id, task_request)
 
+    async def end_recording_batch(self, device_id: str) -> None:
+        await self.connection_manager.end_recording_batch(device_id)
+
     async def _execute_task_on_device(
         self, device_id: str, task_request: TaskRequest
     ) -> ExecutionResult:

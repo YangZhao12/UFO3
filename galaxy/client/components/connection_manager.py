@@ -64,7 +64,41 @@ class WebSocketConnectionManager:
         # Dictionary to track pending registration responses
         # Key: device_id, Value: Future that will be resolved with registration result (bool)
         self._pending_registration: Dict[str, asyncio.Future] = {}
+        self._recording_devices: set[str] = set()
         self.logger = logging.getLogger(f"{__name__}.WebSocketConnectionManager")
+
+    async def start_recording_batch(self, device_id: str) -> None:
+        if device_id in self._recording_devices:
+            return
+        protocol = self._task_protocols.get(device_id)
+        if protocol is None:
+            raise ConnectionError(f"Device {device_id} is not connected")
+        self._recording_devices.add(device_id)
+        try:
+            await protocol.send_recording_control_request(
+                ClientMessageType.RECORDING_START,
+                self.task_name,
+                f"{self.task_name}@{device_id}",
+                device_id,
+            )
+        except Exception:
+            self._recording_devices.discard(device_id)
+            raise
+
+    async def end_recording_batch(self, device_id: str) -> None:
+        if device_id not in self._recording_devices:
+            return
+        protocol = self._task_protocols.get(device_id)
+        try:
+            if protocol is not None:
+                await protocol.send_recording_control_request(
+                    ClientMessageType.RECORDING_END,
+                    self.task_name,
+                    f"{self.task_name}@{device_id}",
+                    device_id,
+                )
+        finally:
+            self._recording_devices.discard(device_id)
 
     async def connect_to_device(
         self,
@@ -291,6 +325,7 @@ class WebSocketConnectionManager:
             raise ConnectionError(f"Device {device_id} is not connected")
 
         try:
+            await self.start_recording_batch(device_id)
             task_client_id = f"{self.task_name}@{device_id}"
             constellation_task_id = f"{self.task_name}@{task_request.task_id}"
 

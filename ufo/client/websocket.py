@@ -61,6 +61,7 @@ class UFOWebSocketClient:
         self._ws: Optional[WebSocketClientProtocol] = None
         self._recording_process: Optional[asyncio.subprocess.Process] = None
         self._recording_sessions: set[str] = set()
+        self._recording_batches: set[str] = set()
 
         self.connected_event = asyncio.Event()
 
@@ -314,6 +315,15 @@ class UFOWebSocketClient:
                 self.logger.info("[WS] Heartbeat received")
             elif msg_type == ServerMessageType.TASK_END:
                 await self.handle_task_end(data)
+            elif msg_type == ServerMessageType.RECORDING_START:
+                if data.session_id:
+                    self._recording_batches.add(data.session_id)
+                await self._trigger_record_automation()
+            elif msg_type == ServerMessageType.RECORDING_END:
+                if data.session_id:
+                    self._recording_batches.discard(data.session_id)
+                if not self._recording_batches and not self._recording_sessions:
+                    await self._stop_record_automation()
             elif msg_type == ServerMessageType.ERROR:
                 self.logger.error(f"[WS] Server error: {data.error}")
             elif msg_type == ServerMessageType.COMMAND:
@@ -479,7 +489,7 @@ class UFOWebSocketClient:
         session_id = server_response.session_id
         if session_id:
             self._recording_sessions.discard(session_id)
-        if not self._recording_sessions:
+        if not self._recording_sessions and not self._recording_batches:
             await self._stop_record_automation()
 
     async def _maybe_retry(self):

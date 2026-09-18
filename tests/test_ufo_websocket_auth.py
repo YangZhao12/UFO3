@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from aip.messages import TaskStatus
+from aip.messages import ServerMessage, ServerMessageType, TaskStatus
 from ufo.client.websocket import UFOWebSocketClient
 
 
@@ -101,7 +101,7 @@ async def test_trigger_recording_does_not_start_another_running_recording(
 
 
 @pytest.mark.asyncio
-async def test_recording_stops_only_after_all_device_tasks_end():
+async def test_recording_continues_between_sequential_device_tasks():
     process_stdin = SimpleNamespace(write=MagicMock(), drain=AsyncMock())
     recording_process = SimpleNamespace(
         returncode=None,
@@ -113,6 +113,7 @@ async def test_recording_stops_only_after_all_device_tasks_end():
     ws_client = UFOWebSocketClient("ws://localhost/ws", ufo_client)
     ws_client._recording_process = recording_process
     ws_client._recording_sessions = {"session-1", "session-2"}
+    ws_client._recording_batches = {"constellation-1"}
 
     await ws_client.handle_task_end(
         SimpleNamespace(
@@ -134,8 +135,55 @@ async def test_recording_stops_only_after_all_device_tasks_end():
     )
 
     assert ws_client._recording_sessions == set()
+    process_stdin.write.assert_not_called()
+
+    await ws_client.handle_message(
+        ServerMessage(
+            type=ServerMessageType.RECORDING_END,
+            status=TaskStatus.COMPLETED,
+            session_id="constellation-1",
+        ).model_dump_json()
+    )
+
     process_stdin.write.assert_called_once_with(b"\n")
     process_stdin.drain.assert_awaited_once_with()
     recording_process.wait.assert_awaited_once_with()
     recording_process.terminate.assert_not_called()
     assert ws_client._recording_process is None
+
+
+@pytest.mark.asyncio
+async def test_recording_waits_for_final_task_when_batch_end_arrives_first():
+    process_stdin = SimpleNamespace(write=MagicMock(), drain=AsyncMock())
+    recording_process = SimpleNamespace(
+        returncode=None,
+        stdin=process_stdin,
+        wait=AsyncMock(return_value=0),
+        terminate=MagicMock(),
+    )
+    ws_client = UFOWebSocketClient(
+        "ws://localhost/ws", SimpleNamespace(client_id="windows_device_2")
+    )
+    ws_client._recording_process = recording_process
+    ws_client._recording_sessions = {"session-2"}
+    ws_client._recording_batches = {"constellation-1"}
+
+    await ws_client.handle_message(
+        ServerMessage(
+            type=ServerMessageType.RECORDING_END,
+            status=TaskStatus.COMPLETED,
+            session_id="constellation-1",
+        ).model_dump_json()
+    )
+
+    process_stdin.write.assert_not_called()
+
+    await ws_client.handle_task_end(
+        SimpleNamespace(
+            session_id="session-2",
+            status=TaskStatus.COMPLETED,
+            result="done",
+        )
+    )
+
+    process_stdin.write.assert_called_once_with(b"\n")

@@ -11,7 +11,13 @@ from aip.protocol.heartbeat import HeartbeatProtocol
 from aip.protocol.device_info import DeviceInfoProtocol
 from aip.protocol.task_execution import TaskExecutionProtocol
 from aip.transport.websocket import WebSocketTransport
-from aip.messages import ClientMessage, ClientMessageType, ClientType, ServerMessage
+from aip.messages import (
+    ClientMessage,
+    ClientMessageType,
+    ClientType,
+    ServerMessage,
+    ServerMessageType,
+)
 from aip.telemetry import log_phase_event
 from ufo.module.dispatcher import WebSocketCommandDispatcher
 from ufo.server.services.session_manager import SessionManager, SessionOwnershipError
@@ -496,6 +502,8 @@ class UFOWebSocketHandler:
                     ClientMessageType.TASK,
                     ClientMessageType.COMMAND_RESULTS,
                     ClientMessageType.DEVICE_INFO_REQUEST,
+                    ClientMessageType.RECORDING_START,
+                    ClientMessageType.RECORDING_END,
                     ClientMessageType.REGISTER,
                 ):
                     self.logger.warning(
@@ -538,6 +546,11 @@ class UFOWebSocketHandler:
             elif msg_type == ClientMessageType.DEVICE_INFO_RESPONSE:
                 # Reserved for future Pull model where device pushes info on request
                 await self.handle_device_info_response(data)
+            elif msg_type in (
+                ClientMessageType.RECORDING_START,
+                ClientMessageType.RECORDING_END,
+            ):
+                await self.handle_recording_control(data, ctx)
             else:
                 await self.handle_unknown(data, ctx)
         except Exception as e:
@@ -677,6 +690,37 @@ class UFOWebSocketHandler:
         self.logger.warning(f"[WS] [AIP] Unknown message type: {data.type}")
         if ctx.task_protocol is not None:
             await ctx.task_protocol.send_error(f"Unknown message type: {data.type}")
+
+    async def handle_recording_control(
+        self, data: ClientMessage, ctx: ConnectionContext
+    ) -> None:
+        if data.client_type != ClientType.CONSTELLATION:
+            await self._safe_send_error(
+                "Recording control requires a constellation client", ctx
+            )
+            return
+        if not data.target_id or (
+            ctx.registered_target_id
+            and data.target_id != ctx.registered_target_id
+        ):
+            await self._safe_send_error("Invalid recording target device", ctx)
+            return
+
+        target_protocol = self.client_manager.get_task_protocol(data.target_id)
+        if target_protocol is None:
+            await self._safe_send_error(
+                f"Target device {data.target_id!r} is not connected", ctx
+            )
+            return
+
+        server_type = (
+            ServerMessageType.RECORDING_START
+            if data.type == ClientMessageType.RECORDING_START
+            else ServerMessageType.RECORDING_END
+        )
+        await target_protocol.send_recording_control(
+            server_type, data.session_id or ""
+        )
 
     async def handle_task_request(
         self, data: ClientMessage, ctx: ConnectionContext

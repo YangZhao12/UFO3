@@ -250,6 +250,8 @@ class ClientMessageType(str, Enum):
     TASK_END = "task_end"
     DEVICE_INFO_REQUEST = "device_info_request"
     DEVICE_INFO_RESPONSE = "device_info_response"
+    RECORDING_START = "recording_start"
+    RECORDING_END = "recording_end"
 
 
 class ServerMessageType(str, Enum):
@@ -277,6 +279,8 @@ class ServerMessageType(str, Enum):
     ERROR = "error"
     DEVICE_INFO_REQUEST = "device_info_request"
     DEVICE_INFO_RESPONSE = "device_info_response"
+    RECORDING_START = "recording_start"
+    RECORDING_END = "recording_end"
 
 
 class ClientType(str, Enum):

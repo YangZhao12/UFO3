@@ -98,6 +98,7 @@ from aip.messages import (  # noqa: E402
     ClientMessageType,
     ClientType,
     ServerMessage,
+    ServerMessageType,
     TaskStatus,
 )
 from ufo.server.services.client_connection_manager import (  # noqa: E402
@@ -161,6 +162,45 @@ class SharedHandlerCrossClientIsolationTests(unittest.TestCase):
 
     def setUp(self) -> None:
         _new_loop()
+
+    def test_recording_control_is_forwarded_to_bound_device(self) -> None:
+        client_manager = ClientConnectionManager()
+        handler = UFOWebSocketHandler(client_manager, _DummySessionManager())
+        device_reg = ClientMessage(
+            type=ClientMessageType.REGISTER,
+            status=TaskStatus.OK,
+            client_type=ClientType.DEVICE,
+            client_id="device-1",
+        )
+        constellation_reg = ClientMessage(
+            type=ClientMessageType.REGISTER,
+            status=TaskStatus.OK,
+            client_type=ClientType.CONSTELLATION,
+            client_id="constellation-1",
+            target_id="device-1",
+        )
+        ws_device = _FakeWebSocket([device_reg.model_dump_json()], "device-1")
+        ws_constellation = _FakeWebSocket(
+            [constellation_reg.model_dump_json()], "constellation-1"
+        )
+        _run(handler.connect(ws_device))
+        ctx_constellation = _run(handler.connect(ws_constellation))
+        device_sent_before = len(ws_device.sent)
+
+        control = ClientMessage(
+            type=ClientMessageType.RECORDING_END,
+            status=TaskStatus.CONTINUE,
+            client_type=ClientType.CONSTELLATION,
+            client_id="constellation-1",
+            target_id="device-1",
+            session_id="batch-1",
+        )
+        _run(handler.handle_message(control.model_dump_json(), ctx_constellation))
+
+        self.assertEqual(len(ws_device.sent), device_sent_before + 1)
+        forwarded = ServerMessage.model_validate_json(ws_device.sent[-1])
+        self.assertEqual(forwarded.type, ServerMessageType.RECORDING_END)
+        self.assertEqual(forwarded.session_id, "batch-1")
 
     def test_device_info_response_is_sent_only_to_requester(self) -> None:
         """A constellation's device-info response stays on its own socket.

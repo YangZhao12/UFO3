@@ -1,8 +1,15 @@
 import asyncio
 import json
 import unittest
+from unittest.mock import AsyncMock
 
-from aip.messages import ServerMessage, ServerMessageType, TaskStatus
+from aip.messages import (
+    ClientMessageType,
+    ServerMessage,
+    ServerMessageType,
+    TaskStatus,
+)
+from aip.protocol.task_execution import TaskExecutionProtocol
 from galaxy.client.components.connection_manager import WebSocketConnectionManager
 from galaxy.client.components.types import TaskRequest
 
@@ -31,8 +38,9 @@ class TestImmediateTaskResponse(unittest.IsolatedAsyncioTestCase):
     async def test_response_arriving_during_send_is_not_lost(self):
         device_id = "device-1"
         manager = WebSocketConnectionManager(task_name="test")
-        manager._transports[device_id] = ImmediateResponseTransport(manager, device_id)
-        manager._task_protocols[device_id] = object()
+        transport = ImmediateResponseTransport(manager, device_id)
+        manager._transports[device_id] = transport
+        manager._task_protocols[device_id] = TaskExecutionProtocol(transport)
 
         result = await manager.send_task_to_device(
             device_id,
@@ -47,6 +55,28 @@ class TestImmediateTaskResponse(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.result, {"output": "completed immediately"})
         self.assertEqual(manager._pending_tasks, {})
+
+    async def test_recording_batch_control_is_sent_once_per_device(self):
+        device_id = "device-1"
+        manager = WebSocketConnectionManager(task_name="batch-1")
+        protocol = AsyncMock()
+        manager._task_protocols[device_id] = protocol
+
+        await manager.start_recording_batch(device_id)
+        await manager.start_recording_batch(device_id)
+        await manager.end_recording_batch(device_id)
+        await manager.end_recording_batch(device_id)
+
+        self.assertEqual(protocol.send_recording_control_request.await_count, 2)
+        self.assertEqual(
+            protocol.send_recording_control_request.await_args_list[0].args[0],
+            ClientMessageType.RECORDING_START,
+        )
+        self.assertEqual(
+            protocol.send_recording_control_request.await_args_list[1].args[0],
+            ClientMessageType.RECORDING_END,
+        )
+        self.assertEqual(manager._recording_devices, set())
 
     async def test_unscoped_error_completes_only_pending_task_for_device(self):
         device_id = "device-1"

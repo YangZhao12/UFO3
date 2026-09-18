@@ -78,6 +78,24 @@ class TaskExecutionProtocol(AIPProtocol):
         await self.send_message(task_msg)
         self.logger.info(f"Sent task request: {task_name}")
 
+    async def send_recording_control_request(
+        self,
+        message_type: ClientMessageType,
+        batch_id: str,
+        client_id: str,
+        target_id: str,
+    ) -> None:
+        recording_msg = ClientMessage(
+            type=message_type,
+            status=TaskStatus.CONTINUE,
+            client_type=ClientType.CONSTELLATION,
+            client_id=client_id,
+            target_id=target_id,
+            session_id=batch_id,
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
+        await self.send_message(recording_msg)
+
     async def send_task_assignment(
         self,
         user_request: str,
@@ -123,6 +141,18 @@ class TaskExecutionProtocol(AIPProtocol):
         self.logger.info(
             f"Sent {actions_count} command(s) for session {server_message.session_id}"
         )
+
+    async def send_recording_control(
+        self, message_type: ServerMessageType, session_id: str
+    ) -> None:
+        recording_msg = ServerMessage(
+            type=message_type,
+            status=TaskStatus.CONTINUE,
+            session_id=session_id,
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
+        await self.send_message(recording_msg)
+        self.logger.info(f"Sent {message_type.value} for batch {session_id}")
 
     async def send_commands(
         self,

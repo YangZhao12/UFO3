@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -43,11 +44,14 @@ def test_find_ffmpeg_explains_how_to_install_or_configure(monkeypatch, tmp_path)
 def test_main_waits_for_manual_stop_and_closes_recording(monkeypatch):
     recording = MagicMock(returncode=0)
     popen = MagicMock(return_value=recording)
+    recording_start = MagicMock()
+    recording_start.now.return_value.strftime.return_value = "20260918-0910"
     manual_stop = MagicMock(return_value="")
     disable_ac_power_timeouts = MagicMock()
     monkeypatch.setattr(
         record_automation, "disable_ac_power_timeouts", disable_ac_power_timeouts
     )
+    monkeypatch.setattr(record_automation, "datetime", recording_start)
     monkeypatch.setattr(record_automation, "find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr(record_automation.subprocess, "Popen", popen)
     monkeypatch.setattr("builtins.input", manual_stop)
@@ -55,6 +59,10 @@ def test_main_waits_for_manual_stop_and_closes_recording(monkeypatch):
     record_automation.main()
 
     disable_ac_power_timeouts.assert_called_once_with()
+    recording_start.now.return_value.strftime.assert_called_once_with("%Y%m%d-%H%M")
+    assert Path(popen.call_args.args[0][-1]).name == (
+        "automation_recording_20260918-0910.mp4"
+    )
     manual_stop.assert_called_once_with(
         "Recording started. Press Enter to stop recording...\n"
     )

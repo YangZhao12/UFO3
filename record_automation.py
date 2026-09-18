@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 
@@ -43,7 +44,8 @@ def find_ffmpeg() -> str:
 
 def main() -> None:
     disable_ac_power_timeouts()
-    output_path = Path("automation_recording.mp4").resolve()
+    started_at = datetime.now().strftime("%Y%m%d-%H%M")
+    output_path = Path(f"automation_recording_{started_at}.mp4").resolve()
     recording = subprocess.Popen(
         [
             find_ffmpeg(),

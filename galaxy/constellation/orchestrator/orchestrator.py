@@ -217,6 +217,21 @@ class TaskConstellationOrchestrator:
 
                 self._execution_tasks.clear()
 
+            if self._device_manager is not None:
+                end_recording_batch = getattr(
+                    self._device_manager, "end_recording_batch", None
+                )
+                if end_recording_batch is not None:
+                    device_ids = {
+                        task.target_device_id
+                        for task in constellation.tasks.values()
+                        if task.target_device_id
+                    }
+                    await asyncio.gather(
+                        *(end_recording_batch(device_id) for device_id in device_ids),
+                        return_exceptions=True,
+                    )
+
             await self._cleanup_constellation(constellation)
 
     # ========================================
