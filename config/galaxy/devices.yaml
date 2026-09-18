@@ -4,7 +4,7 @@
 
 devices:
   - device_id: "windows_device_2"
-    server_url: "wss://girls-cream-praise-additions.trycloudflare.com/ws?token=lRQkRwwo9iku3fSvcHaEmr8we_5cSm130ZV0reO8aO8"
+    server_url: "wss://brad-cms-grow-librarian.trycloudflare.com/ws?token=PjAhcJku2SIEmlFF8DSBl1yJlwBnxLkxOKs3QpFy7_g"
     os: "windows"
     capabilities:
       - "web_browsing"
@@ -14,7 +14,7 @@ devices:
       - "any windows tasks"
     metadata:
       location: "home_office"
-      os: "windows"
+      os: "windows" 
       performance: "medium"
       description: "Primary development laptop"
       operation_engineer_email: "hidan.zhang@gmail.com"

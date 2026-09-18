@@ -261,19 +261,18 @@ class ConstellationLLMInteractionStrategy(BaseProcessingStrategy):
         )
 
         for retry_count in range(max_retries):
-            try:
-                # Get response from LLM
-                loop = asyncio.get_event_loop()
-                response_text, cost = await loop.run_in_executor(
-                    None,  # Use default ThreadPoolExecutor
-                    agent.get_response,
-                    prompt_message,
-                    AgentType.CONSTELLATION,
-                    True,  # use_backup_engine
-                    model_name,
-                    max_tokens,
-                )
+            loop = asyncio.get_event_loop()
+            response_text, cost = await loop.run_in_executor(
+                None,
+                agent.get_response,
+                prompt_message,
+                AgentType.CONSTELLATION,
+                True,
+                model_name,
+                max_tokens,
+            )
 
+            try:
                 # Validate that response can be parsed as JSON
                 agent.response_to_dict(response_text)
 

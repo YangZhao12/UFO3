@@ -746,6 +746,7 @@ class HostLLMInteractionStrategy(BaseProcessingStrategy):
     "assigned_third_party_agent",
     "target",
     "status",
+    "result",
 )
 class HostActionExecutionStrategy(BaseProcessingStrategy):
     """
@@ -854,6 +855,7 @@ class HostActionExecutionStrategy(BaseProcessingStrategy):
                 parsed_response, execution_result, target_registry, selected_target_id
             )
             status = context.get_local("status")
+            result_text = parsed_response.result
             settings_command = (parsed_response.arguments or {}).get("bash_command")
             if _is_successful_settings_launch(
                 function_name, parsed_response.arguments, execution_result
@@ -862,11 +864,23 @@ class HostActionExecutionStrategy(BaseProcessingStrategy):
                     command_dispatcher, settings_command
                 )
                 status = "FINISH" if settings_page_verified else "CONTINUE"
+                settings_page = get_settings_uri_page(settings_command)
+                heading = _SETTINGS_PAGE_DISPLAY_NAMES.get(
+                    settings_page, settings_page or "requested page"
+                )
                 if settings_page_verified:
+                    result_text = (
+                        "Opened Windows Settings successfully; "
+                        f"visible page heading: {heading}; method used: {settings_command}"
+                    )
                     self.logger.info(
                         "Settings page verified through UIA; finishing without an extra LLM confirmation round"
                     )
                 else:
+                    result_text = (
+                        "Settings page not verified after launch: "
+                        f"{heading}; method used: {settings_command}"
+                    )
                     self.logger.info(
                         "Settings page not verified through UIA; continuing for post-action validation"
                     )
@@ -881,6 +895,7 @@ class HostActionExecutionStrategy(BaseProcessingStrategy):
                     "selected_application_root": selected_application_root,
                     "assigned_third_party_agent": assigned_third_party_agent,
                     "status": status,
+                    "result": result_text,
                 },
                 phase=ProcessingPhase.ACTION_EXECUTION,
             )
@@ -1122,6 +1137,12 @@ _SETTINGS_PAGE_HEADINGS = {
     "sound": {"sound", "声音"},
     "system": {"system", "系统"},
     "personalization-background": {"background", "背景"},
+}
+
+_SETTINGS_PAGE_DISPLAY_NAMES = {
+    "sound": "Sound",
+    "system": "System",
+    "personalization-background": "Background",
 }
 
 _SETTINGS_VERIFICATION_ATTEMPTS = 5

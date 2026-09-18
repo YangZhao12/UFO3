@@ -8,12 +8,49 @@ from galaxy.agents.constellation_agent_states import (
     ConstellationAgentStatus,
     ContinueConstellationAgentState,
 )
+from galaxy.agents.constellation_agent import ConstellationAgent
+from galaxy.agents.processors.strategies.base_constellation_strategy import (
+    ConstellationLLMInteractionStrategy,
+)
+from galaxy.agents.schema import WeavingMode
 from galaxy.constellation.enums import ConstellationState
 from galaxy.core.events import EventType
 from galaxy.client.components.task_queue_manager import TaskQueueManager
 from galaxy.client.components.types import TaskRequest
 from galaxy.galaxy_client import GalaxyClient
 from ufo.module.context import Context
+
+
+def test_missing_processor_status_marks_agent_failed():
+    agent = ConstellationAgent.__new__(ConstellationAgent)
+    agent._status = ConstellationAgentStatus.CONTINUE.value
+    agent.processor = SimpleNamespace(
+        processing_context=SimpleNamespace(get_local=Mock(return_value=None))
+    )
+    agent.logger = Mock()
+
+    agent._update_agent_status()
+
+    assert agent.status == ConstellationAgentStatus.FAIL.value
+
+
+@pytest.mark.asyncio
+async def test_api_failure_is_not_retried_as_json_parse_failure():
+    strategy = ConstellationLLMInteractionStrategy()
+    agent = SimpleNamespace(
+        get_response=Mock(side_effect=RuntimeError("api failed")),
+        response_to_dict=Mock(),
+    )
+
+    with pytest.raises(RuntimeError, match="api failed"):
+        await strategy._get_llm_response_with_retry(
+            agent,
+            [{"role": "user", "content": "test"}],
+            WeavingMode.CREATION,
+        )
+
+    agent.get_response.assert_called_once()
+    agent.response_to_dict.assert_not_called()
 
 
 @pytest.mark.asyncio

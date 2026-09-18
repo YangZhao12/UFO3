@@ -328,6 +328,7 @@ class WebSocketConnectionManager:
             await self.start_recording_batch(device_id)
             task_client_id = f"{self.task_name}@{device_id}"
             constellation_task_id = f"{self.task_name}@{task_request.task_id}"
+            task_log_suffix = task_request.created_at.strftime("%Y%m%d_%H%M%S_%f")
 
             # Create client message for task execution
             # Note: Constellation sends ClientMessage.TASK to server, which is different
@@ -337,7 +338,10 @@ class WebSocketConnectionManager:
                 client_type=ClientType.CONSTELLATION,
                 client_id=task_client_id,
                 target_id=device_id,
-                task_name=f"galaxy/{self.task_name}/{task_request.task_name}",
+                task_name=(
+                    f"galaxy/{self.task_name}/"
+                    f"{task_request.task_name}_{task_log_suffix}"
+                ),
                 request=task_request.request,
                 session_id=constellation_task_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),

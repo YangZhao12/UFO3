@@ -210,6 +210,4 @@ class ConstellationLoggingMiddleware(EnhancedLoggingMiddleware):
             traceback.format_exception(type(error), error, error.__traceback__)
         )
 
-        self.logger.error(
-            f"ConstellationAgent: Encountered error - {str(tb_str)}", "red"
-        )
+        self.logger.error(f"ConstellationAgent: Encountered error - {tb_str}")

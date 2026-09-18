@@ -305,11 +305,14 @@ async def test_settings_page_verification_rejects_wrong_heading():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("page_verified", "expected_status"),
-    [(False, "CONTINUE"), (True, "FINISH")],
+    ("page_verified", "expected_status", "expected_result"),
+    [
+        (False, "CONTINUE", "not verified"),
+        (True, "FINISH", "visible page heading: Sound"),
+    ],
 )
 async def test_settings_launch_status_requires_page_verification(
-    page_verified, expected_status
+    page_verified, expected_status, expected_result
 ):
     strategy = HostActionExecutionStrategy()
     parsed_response = HostAgentResponse(
@@ -347,6 +350,8 @@ async def test_settings_launch_status_requires_page_verification(
 
     assert result.success
     assert result.data["status"] == expected_status
+    assert expected_result in result.data["result"]
+    assert result.data["result"] != parsed_response.result
 
 
 if __name__ == "__main__":

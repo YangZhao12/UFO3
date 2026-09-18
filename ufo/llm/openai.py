@@ -278,9 +278,25 @@ class BaseOpenAIService(BaseService):
         try:
             response = self.client.responses.create(**base_params)
         except openai.BadRequestError as e:
+            error_body = e.body if isinstance(e.body, dict) else {}
+            error_param = error_body.get("error", {}).get("param")
             # Fallback if response_format isn't supported on Responses API
             if "response_format" in str(e).lower():
                 base_params.pop("response_format", None)
+                response = self.client.responses.create(**base_params)
+            elif (
+                (
+                    error_param == "reasoning.effort"
+                    or "reasoning.effort" in str(e).lower()
+                )
+                and base_params.get("reasoning", {}).get("effort") != "medium"
+            ):
+                self.logger.warning(
+                    "Reasoning effort '%s' is unsupported by model %s; retrying with 'medium'.",
+                    base_params["reasoning"]["effort"],
+                    selected_model,
+                )
+                base_params["reasoning"] = {"effort": "medium"}
                 response = self.client.responses.create(**base_params)
             else:
                 raise

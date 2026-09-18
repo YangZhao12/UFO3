@@ -588,18 +588,37 @@ export const useGalaxyStore = create<GalaxyStore>()((set, get) => ({
       } as Partial<GalaxyStore>;
 
       if (constellation) {
+        const updatedTasks = {
+          ...state.tasks,
+          [taskId]: updatedTask,
+        };
+        const statistics = computeConstellationStats(
+          constellation.id,
+          constellation.taskIds,
+          updatedTasks,
+        );
+        const allTasksTerminal =
+          statistics.total > 0 &&
+          statistics.completed + statistics.failed === statistics.total;
+
         nextState.constellations = {
           ...state.constellations,
           [constellation.id]: {
             ...constellation,
-            statistics: computeConstellationStats(
-              constellation.id,
-              constellation.taskIds,
-              {
-                ...state.tasks,
-                [taskId]: updatedTask,
-              },
-            ),
+            status: allTasksTerminal
+              ? statistics.failed > 0
+                ? 'failed'
+                : 'completed'
+              : constellation.status,
+            dag: {
+              ...constellation.dag,
+              nodes: constellation.dag.nodes.map((node) =>
+                node.id === taskId
+                  ? { ...node, status: updatedTask.status }
+                  : node,
+              ),
+            },
+            statistics,
             updatedAt: getNow(),
           },
         };

@@ -118,7 +118,11 @@ async def test_websocket_request_with_client():
                 # Send request
                 websocket.send_json({"type": "request", "text": "Test request"})
 
-                # Should receive completion
+                # Should receive immediate acknowledgment, then completion
+                acknowledgment = websocket.receive_json()
+                assert acknowledgment["type"] == "request_received"
+                assert acknowledgment["status"] == "processing"
+
                 response = websocket.receive_json()
                 assert response["type"] == "request_completed"
                 assert response["status"] == "completed"

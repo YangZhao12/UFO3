@@ -20,9 +20,11 @@ class ImmediateResponseTransport:
     def __init__(self, connection_manager, device_id):
         self.connection_manager = connection_manager
         self.device_id = device_id
+        self.requests = []
 
     async def send(self, payload):
         request = json.loads(payload.decode("utf-8"))
+        self.requests.append(request)
         response = ServerMessage(
             type=ServerMessageType.TASK_END,
             session_id=request["session_id"],
@@ -55,6 +57,15 @@ class TestImmediateTaskResponse(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.result, {"output": "completed immediately"})
         self.assertEqual(manager._pending_tasks, {})
+        task_request = next(
+            request
+            for request in transport.requests
+            if request["type"] == ClientMessageType.TASK
+        )
+        self.assertRegex(
+            task_request["task_name"],
+            r"^galaxy/test/immediate-response_\d{8}_\d{6}_\d{6}$",
+        )
 
     async def test_recording_batch_control_is_sent_once_per_device(self):
         device_id = "device-1"

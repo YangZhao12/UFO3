@@ -13,7 +13,8 @@ import logging
 import time
 from typing import Any, Dict
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from galaxy.webui.dependencies import AppState
 from galaxy.webui.models.enums import WebSocketMessageType, RequestStatus
@@ -38,6 +39,7 @@ class WebSocketMessageHandler:
         self.galaxy_service = GalaxyService(app_state)
         self.device_service = DeviceService(app_state)
         self.logger: logging.Logger = logging.getLogger(__name__)
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     async def handle_message(self, websocket: WebSocket, data: dict) -> None:
         """
@@ -112,31 +114,77 @@ class WebSocketMessageHandler:
             }
         )
 
-        # Process request in background task
-        async def process_in_background() -> None:
-            try:
-                result = await self.galaxy_service.process_request(request_text)
-                await websocket.send_json(
-                    {
-                        "type": WebSocketMessageType.REQUEST_COMPLETED,
-                        "request": request_text,
-                        "status": RequestStatus.COMPLETED,
-                        "result": str(result),
-                    }
-                )
-            except Exception as e:
-                self.logger.error(f"❌ Error processing request: {e}", exc_info=True)
-                await websocket.send_json(
-                    {
-                        "type": WebSocketMessageType.REQUEST_FAILED,
-                        "request": request_text,
-                        "status": RequestStatus.FAILED,
-                        "error": str(e),
-                    }
-                )
+        task = asyncio.create_task(
+            self._process_request_in_background(websocket, request_text)
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._on_background_task_done)
 
-        # Start background task
-        asyncio.create_task(process_in_background())
+    async def _process_request_in_background(
+        self, websocket: WebSocket, request_text: str
+    ) -> None:
+        """Process a request and safely notify the originating connection."""
+        try:
+            result = await self.galaxy_service.process_request(request_text)
+        except Exception as error:
+            self.logger.error(
+                "Error processing request: %s", error, exc_info=True
+            )
+            await self._safe_send_json(
+                websocket,
+                {
+                    "type": WebSocketMessageType.REQUEST_FAILED,
+                    "request": request_text,
+                    "status": RequestStatus.FAILED,
+                    "error": str(error),
+                },
+            )
+            return
+
+        await self._safe_send_json(
+            websocket,
+            {
+                "type": WebSocketMessageType.REQUEST_COMPLETED,
+                "request": request_text,
+                "status": RequestStatus.COMPLETED,
+                "result": str(result),
+            },
+        )
+
+    async def _safe_send_json(
+        self, websocket: WebSocket, payload: Dict[str, Any]
+    ) -> bool:
+        """Send a notification unless the originating WebSocket has closed."""
+        if (
+            websocket.client_state == WebSocketState.DISCONNECTED
+            or websocket.application_state == WebSocketState.DISCONNECTED
+        ):
+            self.logger.debug(
+                "Skipping %s notification because the WebSocket is closed",
+                payload.get("type"),
+            )
+            return False
+
+        try:
+            await websocket.send_json(payload)
+            return True
+        except (WebSocketDisconnect, RuntimeError) as error:
+            self.logger.debug(
+                "Unable to send %s notification: %s",
+                payload.get("type"),
+                error,
+            )
+            return False
+
+    def _on_background_task_done(self, task: asyncio.Task[None]) -> None:
+        """Release a completed task and consume any unexpected exception."""
+        self._background_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            self.logger.debug("Request background task was cancelled")
+        except Exception:
+            self.logger.exception("Unexpected request background task failure")
 
     async def _handle_reset(self, websocket: WebSocket, data: dict) -> None:
         """

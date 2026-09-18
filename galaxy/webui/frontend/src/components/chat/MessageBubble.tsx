@@ -454,24 +454,34 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, nextMessage, ste
 
                   return (
                     <div>
-                      <p>
-                        {isThoughtExpanded ? thought : thought.substring(0, truncateAt).trim() + '...'}
+                      <p className={clsx(isThoughtExpanded && 'hidden')}>
+                        <span>{thought.substring(0, truncateAt).trim() + '...'}</span>
+                      </p>
+                      <p className={clsx(!isThoughtExpanded && 'hidden')}>
+                        <span>{thought}</span>
                       </p>
                       <button
-                        onClick={() => setThoughtExpanded(!isThoughtExpanded)}
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setThoughtExpanded((expanded) => !expanded);
+                        }}
+                        aria-expanded={isThoughtExpanded}
                         className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:border-white/30 hover:bg-white/10"
                       >
-                        {isThoughtExpanded ? (
-                          <>
-                            <ChevronUp className="h-3 w-3" aria-hidden />
-                            Show less
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="h-3 w-3" aria-hidden />
-                            Show more ({thought.length} chars)
-                          </>
-                        )}
+                        <ChevronDown
+                          className={clsx(
+                            'h-3 w-3 transition-transform',
+                            isThoughtExpanded && 'rotate-180',
+                          )}
+                          aria-hidden
+                        />
+                        <span>
+                          {isThoughtExpanded
+                            ? 'Show less'
+                            : `Show more (${thought.length} chars)`}
+                        </span>
                       </button>
                     </div>
                   );

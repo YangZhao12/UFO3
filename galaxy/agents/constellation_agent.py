@@ -146,7 +146,13 @@ class ConstellationAgent(BasicAgent, IRequestProcessor, IResultProcessor):
         """
         Update agent status from processor context.
         """
-        self.status = self.processor.processing_context.get_local("status").upper()
+        processor_status = self.processor.processing_context.get_local("status")
+        if not processor_status:
+            self.status = ConstellationAgentStatus.FAIL.value
+            self.logger.error("Constellation processor completed without a status")
+            return
+
+        self.status = str(processor_status).upper()
         self.logger.info(f"Constellation agent status updated to: {self.status}")
 
     async def _validate_and_update_constellation(
