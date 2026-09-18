@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
@@ -12,6 +12,46 @@ import {
 } from './store/galaxyStore';
 
 const wsClient = getWebSocketClient();
+
+interface AppErrorBoundaryState {
+  error: Error | null;
+}
+
+class AppErrorBoundary extends React.Component<React.PropsWithChildren, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Galaxy WebUI failed to render:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="flex min-h-screen items-center justify-center px-6 text-white galaxy-bg">
+          <section className="w-full max-w-xl rounded-lg border border-rose-400/30 bg-slate-950/90 p-6 shadow-2xl">
+            <h1 className="font-heading text-xl font-semibold">Galaxy WebUI failed to load</h1>
+            <p className="mt-3 text-sm text-slate-300">
+              {this.state.error.message || 'An unexpected rendering error occurred.'}
+            </p>
+            <button
+              type="button"
+              className="mt-5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </button>
+          </section>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const statusUnsubscribe = wsClient.onStatusChange((status) => {
   const store = useGalaxyStore.getState();
@@ -628,13 +668,6 @@ const handleGenericEvent = (event: GalaxyEvent) => {
   }
 };
 
-wsClient
-  .connect()
-  .catch((error) => {
-    console.error('❌ Failed to connect to Galaxy WebSocket server:', error);
-    useGalaxyStore.getState().setConnectionStatus('disconnected');
-  });
-
 wsClient.onEvent((event) => {
   const store = useGalaxyStore.getState();
   store.addEventToLog(event);
@@ -643,9 +676,18 @@ wsClient.onEvent((event) => {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
   </React.StrictMode>,
 );
+
+wsClient
+  .connect()
+  .catch((error) => {
+    console.error('❌ Failed to connect to Galaxy WebSocket server:', error);
+    useGalaxyStore.getState().setConnectionStatus('disconnected');
+  });
 
 // Ensure we clean up listeners when hot module reloading or teardown occurs.
 if (import.meta.hot) {
